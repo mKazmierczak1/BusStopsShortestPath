@@ -1,19 +1,19 @@
 import com.opencsv.CSVReader;
-import graph.Graph;
+import graph.BusConnectionsGraph;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalTime;
-import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import model.BusStop;
 import model.Connection;
 
 public class GraphProvider {
 
-  private static Graph<BusStop> graph = null;
+  private static BusConnectionsGraph graph = null;
 
-  public static Graph<BusStop> getGraph() throws Exception {
+  public static BusConnectionsGraph getGraph() throws Exception {
     if (graph == null) {
       graph = fillGraph();
     }
@@ -21,9 +21,9 @@ public class GraphProvider {
     return graph;
   }
 
-  private static Graph<BusStop> fillGraph() throws Exception {
+  private static BusConnectionsGraph fillGraph() throws Exception {
     var data = readAllDataFromCSV();
-    var graph = new Graph<BusStop>(new ArrayList<>(), new ArrayList<>());
+    var graph = new BusConnectionsGraph(new HashMap<>(), new HashMap<>(), new HashMap<>());
 
     data.forEach(
         row -> {
@@ -32,7 +32,7 @@ public class GraphProvider {
           var connection = new Connection(row[2], getTime(row[3]), getTime(row[4]), start, end);
 
           graph.addNode(start, end);
-          graph.addEdge(connection.startStop(), connection.endStop(), connection.getTotalTime());
+          graph.addEdge(connection);
         });
 
     return graph;
@@ -43,7 +43,7 @@ public class GraphProvider {
         readAllLinesFromCSV(
             Paths.get(ClassLoader.getSystemResource("connection_graph.csv").toURI()));
 
-    return data.subList(1, 50); // data.size());
+    return data.subList(1, 30); // data.size());
   }
 
   private static List<String[]> readAllLinesFromCSV(Path filePath) throws Exception {

@@ -3,10 +3,12 @@ package graph;
 import java.time.Duration;
 import java.time.LocalTime;
 import java.util.*;
+import java.util.function.BiFunction;
 import lombok.RequiredArgsConstructor;
 import model.BusStop;
 import model.Connection;
 import org.javatuples.Pair;
+import org.javatuples.Quartet;
 import org.javatuples.Triplet;
 
 @RequiredArgsConstructor
@@ -36,22 +38,77 @@ public class BusConnectionsGraph {
     return nodes.get(stopName);
   }
 
-  public Map<BusStop, Pair<BusStop, LocalTime>> findShortestPathDijkstra(
-      BusStop start, BusStop end, LocalTime time) {
-    Queue<Triplet<BusStop, Long, LocalTime>> frontier =
-        new PriorityQueue<>(Comparator.comparingLong(Triplet::getValue1));
-    var cameFrom = new HashMap<BusStop, Pair<BusStop, LocalTime>>();
-    var costSoFar = new HashMap<BusStop, Long>();
+  public Map<BusStop, Triplet<BusStop, LocalTime, Double>> findShortestPathTimeCriteria(
+      BusStop start, BusStop end, LocalTime time, double heuristicWeight) {
+    return findShortestPath(
+        start,
+        end,
+        time,
+        this::timeCost,
+        (a, b) -> Math.abs(a.stopLat() - b.stopLat()) + Math.abs(a.stopLon() - b.stopLon()),
+        heuristicWeight,
+        true,
+        Criteria.TIME_CRITERIA);
+  }
 
-    frontier.add(Triplet.with(start, 0L, time));
+  public Map<BusStop, Triplet<BusStop, LocalTime, Double>> findShortestPathBusChangeCriteria(
+      BusStop start, BusStop end, LocalTime time, double heuristicWeight) {
+    return findShortestPath(
+        start,
+        end,
+        time,
+        this::busChangeCost,
+        (a, b) -> Math.abs(a.stopLat() - b.stopLat()) + Math.abs(a.stopLon() - b.stopLon()),
+        heuristicWeight,
+        false,
+        Criteria.BUS_CHANGE_CRITERIA);
+  }
+
+  public Map<BusStop, Triplet<BusStop, LocalTime, Double>> findShortestPathDijkstra(
+      BusStop start, BusStop end, LocalTime time) {
+    return findShortestPath(
+        start, end, time, this::timeCost, (a, b) -> 0D, 1D, true, Criteria.TIME_CRITERIA);
+  }
+
+  public ArrayList<Triplet<BusStop, LocalTime, Double>> getPath(
+      Map<BusStop, Triplet<BusStop, LocalTime, Double>> cameFrom, BusStop start, BusStop end) {
+    Triplet<BusStop, LocalTime, Double> current = Triplet.with(end, null, 0D);
+    var path = new ArrayList<Triplet<BusStop, LocalTime, Double>>();
+
+    while (!current.getValue0().name().equals(start.name())) {
+      path.add(current);
+      current = cameFrom.get(current.getValue0());
+    }
+
+    path.add(current);
+    Collections.reverse(path);
+
+    return path;
+  }
+
+  private Map<BusStop, Triplet<BusStop, LocalTime, Double>> findShortestPath(
+      BusStop start,
+      BusStop end,
+      LocalTime time,
+      BiFunction<Quartet<BusStop, Double, LocalTime, String>, Connection, Double> cost,
+      BiFunction<BusStop, BusStop, Double> heuristic,
+      double heuristicWeight,
+      boolean earlyFinish,
+      Criteria criteria) {
+    Queue<Quartet<BusStop, Double, LocalTime, String>> frontier =
+        new PriorityQueue<>(Comparator.comparingDouble(Quartet::getValue1));
+    var cameFrom = new HashMap<BusStop, Triplet<BusStop, LocalTime, Double>>();
+    var costSoFar = new HashMap<BusStop, Double>();
+
+    frontier.add(Quartet.with(start, 0D, time, ""));
     cameFrom.put(start, null);
-    costSoFar.put(start, 0L);
+    costSoFar.put(start, 0D);
 
     while (!frontier.isEmpty()) {
       var current = frontier.poll();
       var currentNode = current.getValue0();
 
-      if (currentNode == end) {
+      if (earlyFinish && currentNode == end) {
         break;
       }
 
@@ -67,25 +124,32 @@ public class BusConnectionsGraph {
         }
 
         var nextNode = nodes.get(next);
-        var earliestConnection =
-            getEarliestConnection(currentNode.name(), next, current.getValue2()).get();
-        var connectionArrivalTime = earliestConnection.arrivalTime();
-        var connectionTime =
-            Duration.between(current.getValue2(), connectionArrivalTime).toMinutes();
-        var newCost =
-            costSoFar.get(currentNode)
-                + (connectionTime > 0
-                    ? connectionTime
-                    : connectionTime * -1
-                        + Duration.between(current.getValue2(), END_DAY_TIME).toMinutes());
+        var connection =
+            switch (criteria) {
+              case TIME_CRITERIA -> getEarliestConnection(
+                      currentNode.name(), next, current.getValue2())
+                  .get();
+              case BUS_CHANGE_CRITERIA -> getIdenticalLine(
+                      currentNode.name(), next, current.getValue3())
+                  .orElse(
+                      getEarliestConnection(currentNode.name(), next, current.getValue2()).get());
+            };
+        var connectionArrivalTime = connection.arrivalTime();
+        var newCost = costSoFar.get(currentNode) + cost.apply(current, connection);
 
         if (!costSoFar.containsKey(nextNode) || newCost < costSoFar.get(nextNode)) {
           costSoFar.put(nextNode, newCost);
-          frontier.add(Triplet.with(nextNode, newCost, connectionArrivalTime));
+          frontier.add(
+              Quartet.with(
+                  nextNode,
+                  newCost + heuristic.apply(end, nextNode) * heuristicWeight,
+                  connectionArrivalTime,
+                  connection.line()));
 
           if (cameFrom.get(currentNode) == null
               || !cameFrom.get(currentNode).getValue0().name().equals(next)) {
-            cameFrom.put(nodes.get(next), Pair.with(currentNode, connectionArrivalTime));
+            cameFrom.put(
+                nodes.get(next), Triplet.with(currentNode, connectionArrivalTime, newCost));
           }
         }
       }
@@ -94,24 +158,20 @@ public class BusConnectionsGraph {
     return cameFrom;
   }
 
-  public void printPath(
-      Map<BusStop, Pair<BusStop, LocalTime>> cameFrom, BusStop start, BusStop end, LocalTime time) {
-    Pair<BusStop, LocalTime> current = Pair.with(end, null);
-    var path = new ArrayList<Pair<BusStop, LocalTime>>();
+  private Double timeCost(
+      Quartet<BusStop, Double, LocalTime, String> current, Connection connection) {
+    var connectionTime =
+        Duration.between(current.getValue2(), connection.arrivalTime()).toMinutes();
+    return (double)
+        (connectionTime > 0
+            ? connectionTime
+            : connectionTime * -1
+                + Duration.between(current.getValue2(), END_DAY_TIME).toMinutes());
+  }
 
-    //    cameFrom.forEach(
-    //        (busStop, pair) -> System.out.println("Came from: " + busStop.name() + " Stop: " +
-    // pair));
-
-    while (!current.getValue0().name().equals(start.name())) {
-      // System.out.println(current);
-      path.add(current);
-      current = cameFrom.get(current.getValue0());
-    }
-
-    path.add(current);
-    Collections.reverse(path);
-    path.forEach(pair -> System.out.println(pair.getValue0().name() + ": " + pair.getValue1()));
+  private Double busChangeCost(
+      Quartet<BusStop, Double, LocalTime, String> current, Connection connection) {
+    return connection.line().equals(current.getValue3()) ? 0D : 1D;
   }
 
   private boolean containsNode(BusStop value) {
@@ -129,6 +189,12 @@ public class BusConnectionsGraph {
                         : Long.MAX_VALUE))
         .min(Comparator.comparingLong(Pair::getValue1))
         .map(Pair::getValue0);
+  }
+
+  private Optional<Connection> getIdenticalLine(String start, String end, String line) {
+    return getEdges(start, end).stream()
+        .filter(connection -> connection.line().equals(line))
+        .findAny();
   }
 
   private Set<Connection> getEdges(String start, String end) {
@@ -150,5 +216,10 @@ public class BusConnectionsGraph {
           values.add(value);
           return values;
         });
+  }
+
+  private enum Criteria {
+    TIME_CRITERIA,
+    BUS_CHANGE_CRITERIA
   }
 }

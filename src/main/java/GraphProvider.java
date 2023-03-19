@@ -22,6 +22,7 @@ public class GraphProvider {
   }
 
   private static BusConnectionsGraph fillGraph() throws Exception {
+    System.out.println("Loading data...");
     var data = readAllDataFromCSV();
     var graph = new BusConnectionsGraph(new HashMap<>(), new HashMap<>(), new HashMap<>());
 
@@ -35,6 +36,7 @@ public class GraphProvider {
           graph.addEdge(connection);
         });
 
+    System.out.println("Data loaded!");
     return graph;
   }
 

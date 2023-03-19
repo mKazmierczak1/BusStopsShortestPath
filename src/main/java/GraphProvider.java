@@ -43,7 +43,7 @@ public class GraphProvider {
         readAllLinesFromCSV(
             Paths.get(ClassLoader.getSystemResource("connection_graph.csv").toURI()));
 
-    return data.subList(1, 30); // data.size());
+    return data.subList(1, data.size());
   }
 
   private static List<String[]> readAllLinesFromCSV(Path filePath) throws Exception {

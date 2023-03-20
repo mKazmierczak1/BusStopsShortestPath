@@ -1,7 +1,9 @@
+import graph.GraphProvider;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalTime;
 import java.util.Scanner;
+import org.javatuples.Triplet;
 
 public class Main {
 
@@ -27,13 +29,17 @@ public class Main {
 
     var path =
         switch (mode) {
-          case "t" -> graph.findShortestPathTimeCriteria(start, end, time, 100D);
+          case "t" -> graph.findShortestPathTimeCriteria(start, end, time, 10D);
           case "p" -> graph.findShortestPathBusChangeCriteria(start, end, time, 1D);
           case "d" -> graph.findShortestPathDijkstra(start, end, time);
           default -> null;
         };
 
-    graph.getPath(path, start, end).forEach(System.out::println);
+    graph.getPath(path, start, end).stream()
+        .map(
+            objects ->
+                Triplet.with(objects.getValue0().name(), objects.getValue1(), objects.getValue2()))
+        .forEach(System.out::println);
     System.out.println(
         "Duration: " + Duration.between(currentTime, Instant.now()).toMillis() + " ms");
   }

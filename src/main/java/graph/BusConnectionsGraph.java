@@ -86,6 +86,11 @@ public class BusConnectionsGraph {
     return path;
   }
 
+  public String getRandomBusStopName() {
+    var nodesNames = nodes.keySet().toArray(String[]::new);
+    return nodesNames[new Random().nextInt(0, nodesNames.length - 1)];
+  }
+
   private Map<BusStop, Triplet<BusStop, LocalTime, Double>> findShortestPath(
       BusStop start,
       BusStop end,

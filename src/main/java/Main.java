@@ -29,7 +29,7 @@ public class Main {
 
     var path =
         switch (mode) {
-          case "t" -> graph.findShortestPathTimeCriteria(start, end, time, 10D);
+          case "t" -> graph.findShortestPathTimeCriteria(start, end, time, 100D);
           case "p" -> graph.findShortestPathBusChangeCriteria(start, end, time, 1D);
           case "d" -> graph.findShortestPathDijkstra(start, end, time);
           default -> null;

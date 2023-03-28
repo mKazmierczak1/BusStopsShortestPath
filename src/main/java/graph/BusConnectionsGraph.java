@@ -2,6 +2,7 @@ package graph;
 
 import java.time.Duration;
 import java.time.LocalTime;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.function.BiFunction;
 import lombok.RequiredArgsConstructor;
@@ -132,12 +133,15 @@ public class BusConnectionsGraph {
         var connection =
             switch (criteria) {
               case TIME_CRITERIA -> getEarliestConnection(
-                      currentNode.name(), next, current.getValue2())
-                  .get();
+                      currentNode.name(), next, current.getValue2().minus(1L, ChronoUnit.SECONDS)).get();
               case BUS_CHANGE_CRITERIA -> getIdenticalLine(
                       currentNode.name(), next, current.getValue3())
                   .orElse(
-                      getEarliestConnection(currentNode.name(), next, current.getValue2()).get());
+                      getEarliestConnection(
+                              currentNode.name(),
+                              next,
+                              current.getValue2().minus(1L, ChronoUnit.SECONDS))
+                          .get());
             };
         var connectionArrivalTime = connection.arrivalTime();
         var newCost = costSoFar.get(currentNode) + cost.apply(current, connection);
@@ -189,8 +193,8 @@ public class BusConnectionsGraph {
             connection ->
                 Pair.with(
                     connection,
-                    connection.arrivalTime().isAfter(time)
-                        ? Duration.between(time, connection.arrivalTime()).toMinutes()
+                    connection.departureTime().isAfter(time)
+                        ? Duration.between(time, connection.departureTime()).toMinutes()
                         : Long.MAX_VALUE))
         .min(Comparator.comparingLong(Pair::getValue1))
         .map(Pair::getValue0);
